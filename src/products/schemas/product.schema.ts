@@ -1,5 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Document, Types } from 'mongoose';
+import { Manufacturer } from '../../manufacturers/schemas/manufacturer.schema';
+import { Vendor } from '../../vendors/schemas/vendor.schema';
 
 @Schema()
 class Image {
@@ -135,11 +137,11 @@ class Data {
   @Prop()
   description: string;
 
-  @Prop()
-  vendorId: string;
+  @Prop({ type: Types.ObjectId, ref: Vendor.name })
+  vendorId: Vendor;
 
-  @Prop()
-  manufacturerId: string;
+  @Prop({ type: Types.ObjectId, ref: Manufacturer.name })
+  manufacturerId: Manufacturer;
 
   @Prop({ type: String, default: 'members-only' })
   storefrontPriceVisibility: string;
