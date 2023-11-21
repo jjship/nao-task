@@ -1,26 +1,50 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { MongoMemoryServer } from 'mongodb-memory-server';
 import { ProductsService } from './products.service';
-import { getModelToken } from '@nestjs/mongoose';
-import { ProductData, ProductDataDocument } from './schemas/productData.schema';
-import { TempProduct, TempProductDocument } from './schemas/tempProduct.schema';
-import { Model } from 'mongoose';
-import { BaseProduct, BaseProductDocument } from './schemas/baseProduct.schema';
-import { Vendor, VendorDocument } from './schemas/vendor.schema';
+import { MongooseModule, getModelToken } from '@nestjs/mongoose';
+import {
+  ProductData,
+  ProductDataDocument,
+  ProductDataSchema,
+} from './schemas/productData.schema';
+import {
+  TempProduct,
+  TempProductDocument,
+  TempProductSchema,
+} from './schemas/tempProduct.schema';
+import { Connection, Model, connect } from 'mongoose';
+import {
+  BaseProduct,
+  BaseProductDocument,
+  BaseProductSchema,
+} from './schemas/baseProduct.schema';
+import { Vendor, VendorDocument, VendorSchema } from './schemas/vendor.schema';
 import {
   Manufacturer,
   ManufacturerDocument,
+  ManufacturerSchema,
 } from './schemas/manufacturer.schema';
 import { CsvRow } from './schemas/csvRow';
 
 describe('ProductsService', () => {
-  let mockBaseProduct: Model<BaseProductDocument>;
-  let mockProductData: Model<ProductDataDocument>;
-  let mockTempProduct: Model<TempProductDocument>;
-  let mockVendor: Model<VendorDocument>;
-  let mockManufacturer: Model<ManufacturerDocument>;
+  let mongod: MongoMemoryServer;
+  let mongoConnection: Connection;
+  let mockBaseProductModel: Model<BaseProductDocument>;
+  let mockProductDataModel: Model<ProductDataDocument>;
+  let tempProductModel: Model<TempProductDocument>;
+  let mockVendorModel: Model<VendorDocument>;
+  let mockManufacturerModel: Model<ManufacturerDocument>;
   let mockService: ProductsService;
 
   beforeAll(async () => {
+    mongod = await MongoMemoryServer.create();
+    const uri = mongod.getUri();
+    mongoConnection = (await connect(uri)).connection;
+    tempProductModel = mongoConnection.model(
+      TempProduct.name,
+      TempProductSchema,
+    );
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductsService,
@@ -34,7 +58,7 @@ describe('ProductsService', () => {
         },
         {
           provide: getModelToken(TempProduct.name),
-          useValue: Model,
+          useValue: tempProductModel,
         },
         {
           provide: getModelToken(Vendor.name),
@@ -45,34 +69,75 @@ describe('ProductsService', () => {
           useValue: Model,
         },
       ],
+      // imports: [
+      //   MongooseModule.forFeature([
+      //     { name: BaseProduct.name, schema: BaseProductSchema },
+      //   ]),
+      //   MongooseModule.forFeature([
+      //     { name: ProductData.name, schema: ProductDataSchema },
+      //   ]),
+      // MongooseModule.forFeature([
+      //   { name: TempProduct.name, schema: TempProductSchema },
+      // ]),
+      //   MongooseModule.forFeature([
+      //     { name: Vendor.name, schema: VendorSchema },
+      //   ]),
+      //   MongooseModule.forFeature([
+      //     { name: Manufacturer.name, schema: ManufacturerSchema },
+      //   ]),
+      // TerminusModule,
+      // ],
     }).compile();
 
-    mockBaseProduct = Model<BaseProductDocument> = module.get<
+    mockBaseProductModel = Model<BaseProductDocument> = module.get<
       Model<BaseProductDocument>
     >(getModelToken(BaseProduct.name));
-    mockProductData = module.get<Model<ProductDataDocument>>(
+
+    mockProductDataModel = module.get<Model<ProductDataDocument>>(
       getModelToken(ProductData.name),
     );
-    mockTempProduct = module.get<Model<TempProductDocument>>(
-      getModelToken(TempProduct.name),
+
+    // mockTempProductModel = module.get<Model<TempProductDocument>>(
+    //   getModelToken(TempProduct.name),
+    // );
+
+    mockVendorModel = module.get<Model<VendorDocument>>(
+      getModelToken(Vendor.name),
     );
-    mockVendor = module.get<Model<VendorDocument>>(getModelToken(Vendor.name));
-    mockManufacturer = module.get<Model<ManufacturerDocument>>(
+
+    mockManufacturerModel = module.get<Model<ManufacturerDocument>>(
       getModelToken(Manufacturer.name),
     );
+
     mockService = module.get<ProductsService>(ProductsService);
+  });
+
+  afterAll(async () => {
+    await mongoConnection.dropDatabase();
+    await mongoConnection.close();
+    await mongod.stop();
+  });
+
+  afterEach(async () => {
+    const collections = mongoConnection.collections;
+    for (const key in collections) {
+      const collection = collections[key];
+      await collection.deleteMany({});
+    }
   });
 
   it('should be defined', () => {
     expect(mockService).toBeDefined();
   });
 
-  // expect(
-  //   (await service).safeCreateTempProduct({ row: mockRow }),
-  // ).resolves.toEqual({
-  //   status: 'ok',
-  //   error: null,
-  // });
+  it('should parse and save csv row data', async () => {
+    await expect(
+      mockService.safeCreateTempProduct({ row: mockRow }),
+    ).resolves.toEqual({
+      status: 'ok',
+      error: null,
+    });
+  });
 });
 
 const mockRow: CsvRow = {

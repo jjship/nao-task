@@ -1,12 +1,17 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, Document, Types } from 'mongoose';
+import { nanoid } from 'nanoid';
 
 export type VendorDocument = HydratedDocument<Vendor>;
 
 @Schema()
-export class Vendor {
+export class Vendor extends Document {
+  @Prop({ type: Types.ObjectId })
+  _id: Types.ObjectId;
+
+  // @Prop({ type: String, default: nanoid() })
   @Prop()
-  id: string;
+  docId: string;
 
   @Prop()
   vendorId: string;
