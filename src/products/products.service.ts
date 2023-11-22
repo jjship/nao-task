@@ -191,7 +191,7 @@ export class ProductsService implements OnApplicationBootstrap {
   > {
     try {
       const invalidFields: string[] = [];
-      if (!isValidCsvRow(row, invalidFields)) {
+      if (!this.isValidCsvRow(row, invalidFields)) {
         this.csvInfo.invalidRowsCount++;
         this.csvInfo.invalidRows.push({
           row: {
@@ -207,7 +207,7 @@ export class ProductsService implements OnApplicationBootstrap {
       }
       this.csvInfo.validRowsCount++;
 
-      const tempProductData = prepareTempProductData({ row });
+      const tempProductData = this.prepareTempProductData({ row });
 
       await this.tempProductModel
         .findOneAndUpdate(
@@ -219,63 +219,59 @@ export class ProductsService implements OnApplicationBootstrap {
           { upsert: true },
         )
         .exec();
-
+      //
       this.csvInfo.tempProductsCounter++;
 
       return { status: 'ok', error: null };
     } catch (error) {
       return { status: 'error', error };
     }
-
-    function isValidCsvRow(row: any, invalidFields: string[]): row is CsvRow {
-      const requiredFields = ['ItemID', 'ManufacturerID', 'ProductID'];
-      requiredFields.forEach((field) => {
-        if (!row[field]) {
-          invalidFields.push(field);
-        }
-      });
-
-      if (!isValidNumber(row.UnitPrice)) {
-        invalidFields.push('UnitPrice');
-      }
-
-      return requiredFields.every(
-        (field) => Boolean(row[field]) && isValidNumber(row.UnitPrice),
-      ); // fast-csv will return strings or null so this is fine
-    }
-
-    function prepareTempProductData({
-      row,
-    }: {
-      row: CsvRow;
-    }): CreateTempProductDto {
-      const packaging = row.PKG ? row.PKG.toUpperCase() : null;
-      return {
-        productId: row.ProductID,
-        manufacturerId: row.ManufacturerID,
-        manufacturerName: row.ManufacturerName ?? '',
-        variant: {
-          sku: `${row.ItemID}${row.ProductID}${packaging ?? null}`,
-          itemId: row.ItemID,
-          manufacturerId: row.ManufacturerID,
-          manufacturerName: row.ManufacturerName ?? null,
-          productName: row.ProductName ?? null,
-          pkg: packaging ?? null,
-          itemDescription: row.ItemDescription
-            ? removeNonAlphanumeric(row.ItemDescription)
-            : null,
-          unitPrice: row.UnitPrice ? parseFloat(row.UnitPrice) : null,
-          manufacturerItemCode: row.ManufacturerItemCode ?? null,
-          ndciItemCode: row.NDCItemCode,
-          itemImageUrl: row.ItemImageURL ?? null,
-          imageFileName: row.ImageFileName ?? null,
-          availability: row.Availability ?? null,
-        },
-      };
-    }
   }
 
-  private async safeGetUniqueProductData({
+  isValidCsvRow(row: any, invalidFields: string[]): row is CsvRow {
+    const requiredFields = ['ItemID', 'ManufacturerID', 'ProductID'];
+    requiredFields.forEach((field) => {
+      if (!row[field]) {
+        invalidFields.push(field);
+      }
+    });
+
+    if (!isValidNumber(row.UnitPrice)) {
+      invalidFields.push('UnitPrice');
+    }
+
+    return requiredFields.every(
+      (field) => Boolean(row[field]) && isValidNumber(row.UnitPrice),
+    ); // fast-csv will return strings or null so this is fine
+  }
+
+  prepareTempProductData({ row }: { row: CsvRow }): CreateTempProductDto {
+    const packaging = row.PKG ? row.PKG.toUpperCase() : null;
+    return {
+      productId: row.ProductID,
+      manufacturerId: row.ManufacturerID,
+      manufacturerName: row.ManufacturerName ?? '',
+      variant: {
+        sku: `${row.ItemID}${row.ProductID}${packaging ?? null}`,
+        itemId: row.ItemID,
+        manufacturerId: row.ManufacturerID,
+        manufacturerName: row.ManufacturerName ?? null,
+        productName: row.ProductName ?? null,
+        pkg: packaging ?? null,
+        itemDescription: row.ItemDescription
+          ? removeNonAlphanumeric(row.ItemDescription)
+          : null,
+        unitPrice: row.UnitPrice ? parseFloat(row.UnitPrice) : null,
+        manufacturerItemCode: row.ManufacturerItemCode ?? null,
+        ndciItemCode: row.NDCItemCode,
+        itemImageUrl: row.ItemImageURL ?? null,
+        imageFileName: row.ImageFileName ?? null,
+        availability: row.Availability ?? null,
+      },
+    };
+  }
+
+  async safeGetUniqueProductData({
     tempProduct,
   }: {
     tempProduct: TempProduct;

@@ -25,6 +25,7 @@ import {
   ManufacturerSchema,
 } from './schemas/manufacturer.schema';
 import { CsvRow } from './schemas/csvRow';
+import { mock } from 'node:test';
 
 describe('ProductsService', () => {
   let mongod: MongoMemoryServer;
@@ -130,28 +131,88 @@ describe('ProductsService', () => {
     expect(mockService).toBeDefined();
   });
 
-  it('should parse and save csv row data', async () => {
-    await expect(
-      mockService.safeCreateTempProduct({ row: mockRow }),
-    ).resolves.toEqual({
-      status: 'ok',
-      error: null,
+  describe('isValidCsvRow', () => {
+    it('should return true if csv row has correct data', () => {
+      expect(mockService.isValidCsvRow(mockRow, [])).toBe(true);
+    });
+    it('should return false if csv row has missing ManufacturerID', () => {
+      const incompleteRow = {
+        ...mockRow,
+        ManufacturerID: undefined,
+      };
+      expect(mockService.isValidCsvRow(incompleteRow, [])).toBe(false);
+    });
+    it('should return false if csv row has missing ItemID', () => {
+      const incompleteRow = {
+        ...mockRow,
+        ItemID: undefined,
+      };
+      expect(mockService.isValidCsvRow(incompleteRow, [])).toBe(false);
+    });
+    it('should return false if csv row has missing ProductID', () => {
+      const incompleteRow = {
+        ...mockRow,
+        ProductID: undefined,
+      };
+      expect(mockService.isValidCsvRow(incompleteRow, [])).toBe(false);
+    });
+    it('should return false if csv row has missing UnitPrice that is not a number', () => {
+      const incompleteRow = {
+        ...mockRow,
+        UnitPrice: 'not a number',
+      };
+      expect(mockService.isValidCsvRow(incompleteRow, [])).toBe(false);
     });
   });
-});
 
-const mockRow: CsvRow = {
-  ItemID: 'item123',
-  ManufacturerID: 'manu456',
-  ManufacturerName: 'Acme Corp',
-  ProductID: 'prod789',
-  ProductName: 'Super Widget',
-  PKG: 'bx',
-  ItemDescription: 'A high-quality widget for various purposes.',
-  UnitPrice: '19.99',
-  ManufacturerItemCode: 'ACME-123',
-  NDCItemCode: 'NDC-456',
-  ItemImageURL: 'http://example.com/images/item123.jpg',
-  ImageFileName: 'item123.jpg',
-  Availability: 'In Stock',
-};
+  describe('safeCreateTempProduct', () => {
+    it('should skip a row if it has incorrect data', async () => {
+      const incompleteRow = {
+        ...mockRow,
+        ManufacturerID: undefined,
+      };
+      const prepareTempProductDataSpy = jest.spyOn(
+        mockService,
+        'prepareTempProductData',
+      );
+      const result = await mockService.safeCreateTempProduct({
+        row: incompleteRow,
+      });
+
+      expect(result).toStrictEqual({
+        status: 'ok',
+        error: null,
+      });
+      expect(prepareTempProductDataSpy).not.toHaveBeenCalled();
+    });
+    it('should parse and save csv row data', async () => {
+      const result = await mockService.safeCreateTempProduct({ row: mockRow });
+      const savedTempProduct = await tempProductModel.findOne();
+
+      expect(result).toStrictEqual({
+        status: 'ok',
+        error: null,
+      });
+      expect(savedTempProduct?.manufacturerId).toEqual(mockRow.ManufacturerID);
+      expect(savedTempProduct?.productId).toEqual(mockRow.ProductID);
+      expect(savedTempProduct?.variants[0].sku).toEqual(
+        `${mockRow.ItemID}${mockRow.ProductID}${mockRow.PKG?.toUpperCase()}`,
+      );
+    });
+  });
+  const mockRow: CsvRow = {
+    ItemID: 'item123',
+    ManufacturerID: 'manu456',
+    ManufacturerName: 'Acme Corp',
+    ProductID: 'prod789',
+    ProductName: 'Super Widget',
+    PKG: 'bx',
+    ItemDescription: 'A high-quality widget for various purposes.',
+    UnitPrice: '19.99',
+    ManufacturerItemCode: 'ACME-123',
+    NDCItemCode: 'NDC-456',
+    ItemImageURL: 'http://example.com/images/item123.jpg',
+    ImageFileName: 'item123.jpg',
+    Availability: 'In Stock',
+  };
+});
