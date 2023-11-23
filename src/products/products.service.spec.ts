@@ -339,7 +339,7 @@ describe('ProductsService', () => {
       });
     });
 
-    it.only('should add variant to productData', async () => {
+    it('should add variant to productData', async () => {
       await mockService.safeCreateTempProduct({ row: mockRow });
 
       const tempProduct = (await tempProductModel.findOne()) as TempProduct;
@@ -373,7 +373,7 @@ describe('ProductsService', () => {
       expect(returnedVariant?.packaging).toEqual(expectedVariant.packaging);
     });
 
-    it.only('should add new variant to productData if variants are present, but sku differs', async () => {
+    it('should add new variant to productData if variants are present, but sku differs', async () => {
       const nextRow = { ...mockRow, ItemID: 'item456' };
       await mockService.safeCreateTempProduct({ row: mockRow });
       await mockService.safeCreateTempProduct({ row: nextRow });
