@@ -1,11 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Document, Types } from 'mongoose';
 import { domainToUnicode } from 'url';
-// import { Manufacturer } from './manufacturer.schema';
-// import { Vendor } from './vendor.schema';
+import { Manufacturer } from './manufacturer.schema';
+import { Vendor } from './vendor.schema';
 export { Variant };
 
-@Schema()
+@Schema({ _id: false })
 class Image {
   @Prop()
   fileName?: string;
@@ -20,7 +20,7 @@ class Image {
   alt?: string;
 }
 
-@Schema()
+@Schema({ _id: false })
 class Variant {
   @Prop()
   id: string;
@@ -98,7 +98,7 @@ class Variant {
   itemCode?: string;
 }
 
-@Schema()
+@Schema({ _id: false })
 class OptionValue {
   @Prop()
   id: string;
@@ -110,7 +110,7 @@ class OptionValue {
   value: string;
 }
 
-@Schema()
+@Schema({ _id: false })
 class Option {
   @Prop()
   name: string;
@@ -125,13 +125,10 @@ class Option {
   dataField?: string;
 }
 
-@Schema()
+@Schema({ _id: false })
 class Data {
   @Prop({ type: String })
   name: string | null;
-
-  @Prop()
-  type?: string;
 
   @Prop()
   shortDescription?: string;
@@ -139,17 +136,11 @@ class Data {
   @Prop()
   description?: string;
 
-  // TODO sort this out
-  // @Prop({ type: String, ref: Vendor.name })
-  // vendorId: Vendor['docId'];
+  @Prop({ type: String, ref: Vendor.name })
+  vendorId: Vendor['docId'];
 
-  // @Prop({ type: String, ref: Manufacturer.name })
-  // manufacturerId: Manufacturer['docId'];
-  @Prop()
-  vendorId: string;
-
-  @Prop()
-  manufacturerId: string;
+  @Prop({ type: String, ref: Manufacturer.name })
+  manufacturerId: Manufacturer['docId'];
 
   @Prop({ type: String, default: 'members-only' })
   storefrontPriceVisibility?: string;
@@ -179,7 +170,7 @@ class Data {
   categoryId?: string;
 }
 
-@Schema()
+@Schema({ _id: false })
 class Info {
   @Prop()
   createdBy?: string;

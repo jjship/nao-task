@@ -3,7 +3,7 @@ import { HydratedDocument, Document, Types } from 'mongoose';
 
 export type TempProductDocument = HydratedDocument<TempProduct>;
 
-@Schema()
+@Schema({ _id: false })
 class TempVariant {
   @Prop()
   sku: string;

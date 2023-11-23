@@ -1,11 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as Papa from 'papaparse';
-import {
-  Injectable,
-  OnModuleInit,
-  OnApplicationBootstrap,
-} from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ProductData, Variant } from './schemas/productData.schema';
@@ -13,7 +9,7 @@ import { TempProduct } from './schemas/tempProduct.schema';
 import { Vendor } from './schemas/vendor.schema';
 import { Manufacturer } from './schemas/manufacturer.schema';
 import { Logger } from '@nestjs/common';
-import { CreateTempProductDto } from './dto/temp-product.dto';
+import { CreateTempProductDto } from './dto/tempProduct.dto';
 import { BaseProduct } from './schemas/baseProduct.schema';
 import { CsvRow } from './schemas/csvRow';
 import {
@@ -23,28 +19,29 @@ import {
   removeNonAlphanumeric,
 } from './helpers/product.helpers';
 import { MARKUP_PERCENTS } from './constants';
+import { ProductDataDto, VariantDto } from './dto/productData.dto';
 // import { MemoryHealthIndicator } from '@nestjs/terminus';
 
 @Injectable()
-export class ProductsService implements OnApplicationBootstrap {
+export class ProductsService implements OnModuleInit {
   constructor(
     @InjectModel(BaseProduct.name)
-    private readonly baseProductModel: Model<BaseProduct>,
+    readonly baseProductModel: Model<BaseProduct>,
     @InjectModel(ProductData.name)
-    private readonly productDataModel: Model<ProductData>,
+    readonly productDataModel: Model<ProductData>,
     @InjectModel(TempProduct.name)
-    private readonly tempProductModel: Model<TempProduct>,
+    readonly tempProductModel: Model<TempProduct>,
     @InjectModel(Vendor.name)
-    private readonly vendorModel: Model<Vendor>,
+    readonly vendorModel: Model<Vendor>,
     @InjectModel(Manufacturer.name)
-    private readonly manufacturerModel: Model<Manufacturer>,
+    readonly manufacturerModel: Model<Manufacturer>,
     // private memory: MemoryHealthIndicator,
   ) {}
 
   private readonly logger = new Logger(ProductsService.name);
 
-  async onApplicationBootstrap() {
-    const filePath = path.join(__dirname, '../../data/hundred.txt');
+  onModuleInit = async () => {
+    const filePath = path.join(__dirname, '../../../data/short-test.txt');
 
     try {
       this.logger.log('Deleting previous temp products');
@@ -55,17 +52,17 @@ export class ProductsService implements OnApplicationBootstrap {
     }
 
     await this.processCsvFile(filePath);
-  }
+  };
 
-  async processCsvFile(filePath: string) {
+  processCsvFile = async (filePath: string) => {
     const fileStream = fs.createReadStream(filePath);
 
     await this.processCsvFileNew(fileStream);
 
     await this.updateProductsData();
-  }
+  };
 
-  private async processCsvFileNew(fileStream: fs.ReadStream) {
+  private processCsvFileNew = async (fileStream: fs.ReadStream) => {
     return new Promise<void>((resolve, reject) => {
       Papa.parse(fileStream, {
         chunkSize: 50000,
@@ -94,62 +91,74 @@ export class ProductsService implements OnApplicationBootstrap {
         },
       });
     });
+  };
+
+  private async processChunk(chunkData: any[]) {
+    for (const row of chunkData) {
+      const { error: tempProductError } = await this.safeCreateTempProduct({
+        row: row,
+      });
+
+      if (tempProductError) {
+        this.handleError(tempProductError);
+        return;
+      }
+    }
   }
 
-  private async updateProductsData() {
-    this.logger.debug('Updating products data');
-    this.tempProductModel
-      .find()
-      .cursor()
-      .on('data', async (tempProduct) => {
-        this.logger.debug('Processing temp product', tempProduct.productId);
-        const {
-          manufacturerId,
-          vendorId,
-          internalProductId,
-          error: getUniqueProductDataError,
-        } = await this.safeGetUniqueProductData({
+  updateProductsData = async () => {
+    this.logger.log('Updating products data');
+    const cursor = this.tempProductModel.find().cursor();
+
+    for await (const tempProduct of cursor) {
+      const {
+        manufacturerId,
+        vendorId,
+        internalProductId,
+        error: getUniqueProductDataError,
+      } = await this.safeGetUniqueProductData({
+        tempProduct,
+      });
+
+      if (getUniqueProductDataError) {
+        this.handleError(getUniqueProductDataError);
+        return;
+      }
+
+      const { productData, error: getProductDataError } =
+        await this.safeGetProductData({
           tempProduct,
+          vendorId,
+          manufacturerId,
+          internalProductId,
         });
 
-        if (getUniqueProductDataError) {
-          this.handleError(getUniqueProductDataError);
-          return;
+      if (getProductDataError) {
+        this.handleError(getProductDataError);
+        return;
+      }
+
+      for (const tempVariant of tempProduct.variants) {
+        const { error: updateVariantError } = await this.safeUpdateVariant({
+          tempVariant,
+          productData,
+          internalProductId,
+        });
+
+        if (updateVariantError) {
+          this.handleError(updateVariantError);
+          continue;
         }
-
-        const { productData, error: getProductDataError } =
-          await this.safeGetProductData({
-            tempProduct,
-            vendorId,
-            manufacturerId,
-            internalProductId,
-          });
-
-        if (getProductDataError) {
-          this.handleError(getProductDataError);
-          return;
-        }
-
-        for (const tempVariant of tempProduct.variants) {
-          const { error: updateVariantError } = await this.safeUpdateVariant({
-            tempVariant,
-            productData,
-            internalProductId,
-          });
-
-          if (updateVariantError) {
-            this.handleError(updateVariantError);
-            continue;
-          }
-        }
-      })
-      .on('error', (error) => {
-        this.handleError(error);
-      })
-      .on('end', () => {
-        this.logger.log('Finished processing csv file');
-      });
-  }
+      }
+    }
+    cursor.on('error', (error) => {
+      this.handleError(error);
+    });
+    cursor.on('end', () => {
+      this.logger.log('Updating products data');
+    });
+    this.logger.debug('Products data updated', this.csvInfo);
+  };
 
   private csvInfo: {
     validRowsCount: number;
@@ -169,26 +178,13 @@ export class ProductsService implements OnApplicationBootstrap {
     newVariantsCount: 0,
   };
 
-  private async processChunk(chunkData: any[]) {
-    for (const row of chunkData) {
-      const { error: tempProductError } = await this.safeCreateTempProduct({
-        row: row,
-      });
-
-      if (tempProductError) {
-        this.handleError(tempProductError);
-        return;
-      }
-    }
-  }
-
-  async safeCreateTempProduct({
+  safeCreateTempProduct = async ({
     row,
   }: {
     row: CsvRow | Partial<CsvRow>;
   }): Promise<
     { status: 'ok'; error: null } | { status: 'error'; error: Error }
-  > {
+  > => {
     try {
       const invalidFields: string[] = [];
       if (!this.isValidCsvRow(row, invalidFields)) {
@@ -226,7 +222,7 @@ export class ProductsService implements OnApplicationBootstrap {
     } catch (error) {
       return { status: 'error', error };
     }
-  }
+  };
 
   isValidCsvRow(row: any, invalidFields: string[]): row is CsvRow {
     const requiredFields = ['ItemID', 'ManufacturerID', 'ProductID'];
@@ -271,7 +267,7 @@ export class ProductsService implements OnApplicationBootstrap {
     };
   }
 
-  async safeGetUniqueProductData({
+  safeGetUniqueProductData = async ({
     tempProduct,
   }: {
     tempProduct: TempProduct;
@@ -288,7 +284,7 @@ export class ProductsService implements OnApplicationBootstrap {
         internalProductId: string;
         error: null;
       }
-  > {
+  > => {
     try {
       const manufacturerId = await this.getManufacturerId({
         manufacturerId: tempProduct.manufacturerId,
@@ -332,15 +328,15 @@ export class ProductsService implements OnApplicationBootstrap {
         error,
       };
     }
-  }
+  };
 
-  private async getVendorId({
+  private getVendorId = async ({
     manufacturerId,
     manufacturerName,
   }: {
     manufacturerId: string;
     manufacturerName: string;
-  }) {
+  }) => {
     const vendor = await this.vendorModel
       .findOneAndUpdate(
         {
@@ -359,15 +355,15 @@ export class ProductsService implements OnApplicationBootstrap {
       .exec();
 
     return vendor ? vendor._id.toString() : null;
-  }
+  };
 
-  private async getManufacturerId({
+  private getManufacturerId = async ({
     manufacturerId,
     manufacturerName,
   }: {
     manufacturerId: string;
     manufacturerName: string;
-  }) {
+  }) => {
     const manufacturer = await this.manufacturerModel
       .findOneAndUpdate(
         {
@@ -385,9 +381,9 @@ export class ProductsService implements OnApplicationBootstrap {
       .exec();
 
     return manufacturer ? manufacturer._id.toString() : null;
-  }
+  };
 
-  private async getProductId({
+  private getProductId = async ({
     manufacturerId,
     vendorId,
     vendorProductId,
@@ -395,7 +391,7 @@ export class ProductsService implements OnApplicationBootstrap {
     manufacturerId: string;
     vendorId: string;
     vendorProductId: string;
-  }) {
+  }) => {
     const baseProduct = await this.baseProductModel
       .findOneAndUpdate(
         {
@@ -419,9 +415,9 @@ export class ProductsService implements OnApplicationBootstrap {
     }
 
     return baseProduct ? baseProduct.internalProductId : null;
-  }
+  };
 
-  private async safeGetProductData({
+  safeGetProductData = async ({
     tempProduct,
     vendorId,
     manufacturerId,
@@ -434,11 +430,11 @@ export class ProductsService implements OnApplicationBootstrap {
   }): Promise<
     | { productData: ProductData; error: null }
     | { productData: null; error: Error }
-  > {
+  > => {
     try {
-      const productData = await this.getProductData({
-        internalProductId,
-      });
+      const productData = await this.productDataModel
+        .findOne({ docId: internalProductId })
+        .exec();
 
       if (!productData) {
         const newProductData = prepareCommonProductData({
@@ -448,15 +444,15 @@ export class ProductsService implements OnApplicationBootstrap {
           internalProductId,
         });
 
-        const newProduct = await this.productDataModel.findOneAndUpdate(
-          { docId: internalProductId },
-          {
-            $setOnInsert: {
-              ...newProductData,
+        const newProduct = await this.productDataModel
+          .findOneAndUpdate(
+            { docId: internalProductId },
+            {
+              $set: newProductData,
             },
-          },
-          { new: true, upsert: true },
-        );
+            { upsert: true, new: true },
+          )
+          .exec();
 
         this.csvInfo.newProductsCount++;
 
@@ -478,9 +474,7 @@ export class ProductsService implements OnApplicationBootstrap {
       vendorId: string;
       manufacturerId: string;
       internalProductId: string;
-    }): Partial<ProductData> {
-      console.log('TEMP************');
-      console.dir({ variants: tempProduct.variants }, { depth: null });
+    }): ProductDataDto {
       return {
         docId: internalProductId,
         data: {
@@ -510,20 +504,9 @@ export class ProductsService implements OnApplicationBootstrap {
         return null;
       }
     }
-  }
+  };
 
-  private async getProductData({
-    internalProductId,
-  }: {
-    internalProductId: string;
-  }) {
-    const productData = await this.productDataModel
-      .findOne({ docId: internalProductId })
-      .exec();
-    return productData;
-  }
-
-  private async safeUpdateVariant({
+  safeUpdateVariant = async ({
     tempVariant,
     productData,
     internalProductId,
@@ -533,10 +516,9 @@ export class ProductsService implements OnApplicationBootstrap {
     internalProductId: string;
   }): Promise<
     { status: 'ok'; error: null } | { status: 'error'; error: Error }
-  > {
+  > => {
     try {
       const newVariant = prepareNewVariantData({ tempVariant });
-
       const variantInDb = productData.data.variants
         ? productData.data.variants.find((v) => v.sku === newVariant.sku)
         : undefined;
@@ -550,14 +532,7 @@ export class ProductsService implements OnApplicationBootstrap {
         await this.productDataModel
           .findOneAndUpdate(
             { docId: internalProductId },
-            {
-              $set: {
-                'data.variants.$[variant]': variantDataToUpdate,
-              },
-            },
-            {
-              arrayFilters: [{ 'variant.sku': newVariant.sku }],
-            },
+            { $push: { 'data.variants': variantDataToUpdate } },
           )
           .exec();
 
@@ -623,28 +598,21 @@ export class ProductsService implements OnApplicationBootstrap {
     }: {
       newVariant: Variant;
       variantInDb: Variant | undefined;
-    }): Partial<Variant> {
-      if (!variantInDb) {
-        return newVariant;
-      }
-      type VariantKey = keyof Variant;
-      const newVariantKeys = Object.keys(newVariant) as VariantKey[];
-      const variantDataToUpdate: Record<string, any> = {};
+    }): VariantDto {
+      const variantDataToUpdate = new VariantDto(); // Initialize an empty VariantDto
+      const keysToCheck = Object.keys(newVariant) as Array<keyof Variant>;
 
-      newVariantKeys.forEach((key: VariantKey) => {
-        if (
-          newVariant[key] !== undefined &&
-          newVariant[key] !== variantInDb[key]
-        ) {
-          variantDataToUpdate[key] = newVariant[key] as Variant[VariantKey];
+      keysToCheck.forEach((key) => {
+        if (!variantInDb || newVariant[key] !== variantInDb[key]) {
+          (variantDataToUpdate as any)[key] = newVariant[key];
         }
       });
 
       return variantDataToUpdate;
     }
-  }
+  };
 
-  private handleError(error: Error) {
+  private handleError = (error: Error) => {
     this.logger.error(error);
-  }
+  };
 }
