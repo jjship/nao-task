@@ -51,18 +51,16 @@ export class ProductsService implements OnModuleInit {
       this.handleError(error);
     }
 
-    await this.processCsvFile(filePath);
-  };
-
-  processCsvFile = async (filePath: string) => {
-    const fileStream = fs.createReadStream(filePath);
-
-    await this.processCsvFileNew(fileStream);
+    await this.processCsvFile({ filePath });
 
     await this.updateProductsData();
+
+    return;
   };
 
-  private processCsvFileNew = async (fileStream: fs.ReadStream) => {
+  private processCsvFile = async ({ filePath }: { filePath: string }) => {
+    const fileStream = fs.createReadStream(filePath);
+
     return new Promise<void>((resolve, reject) => {
       Papa.parse(fileStream, {
         chunkSize: 50000,
@@ -215,7 +213,7 @@ export class ProductsService implements OnModuleInit {
           { upsert: true },
         )
         .exec();
-      //
+
       this.csvInfo.tempProductsCounter++;
 
       return { status: 'ok', error: null };
@@ -372,8 +370,8 @@ export class ProductsService implements OnModuleInit {
         },
         {
           $setOnInsert: {
-            vendorId: manufacturerId,
-            vendorName: manufacturerName,
+            manufacturerId: manufacturerId,
+            manufacturerName: manufacturerName,
           },
         },
         { new: true, upsert: true, projection: { _id: 1 } },
