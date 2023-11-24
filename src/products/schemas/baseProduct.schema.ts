@@ -8,7 +8,7 @@ export class BaseProduct extends Document {
   @Prop({ type: Types.ObjectId })
   _id: Types.ObjectId;
 
-  @Prop({ type: String, default: nanoid() })
+  @Prop()
   internalProductId: string;
 
   @Prop()

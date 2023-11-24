@@ -20,6 +20,7 @@ import {
 } from './helpers/product.helpers';
 import { MARKUP_PERCENTS } from './constants';
 import { ProductDataDto, VariantDto } from './dto/productData.dto';
+import { nanoid } from 'nanoid';
 // import { MemoryHealthIndicator } from '@nestjs/terminus';
 
 @Injectable()
@@ -110,8 +111,8 @@ export class ProductsService implements OnModuleInit {
 
     for await (const tempProduct of cursor) {
       const {
-        manufacturerId,
-        vendorId,
+        internalManufacturerId,
+        internalVendorId,
         internalProductId,
         error: getUniqueProductDataError,
       } = await this.safeGetUniqueProductData({
@@ -126,8 +127,8 @@ export class ProductsService implements OnModuleInit {
       const { productData, error: getProductDataError } =
         await this.safeGetProductData({
           tempProduct,
-          vendorId,
-          manufacturerId,
+          internalManufacturerId,
+          internalVendorId,
           internalProductId,
         });
 
@@ -271,38 +272,38 @@ export class ProductsService implements OnModuleInit {
     tempProduct: TempProduct;
   }): Promise<
     | {
-        manufacturerId: null;
-        vendorId: null;
+        internalManufacturerId: null;
+        internalVendorId: null;
         internalProductId: null;
         error: Error;
       }
     | {
-        manufacturerId: string;
-        vendorId: string;
+        internalManufacturerId: string;
+        internalVendorId: string;
         internalProductId: string;
         error: null;
       }
   > => {
     try {
-      const manufacturerId = await this.getManufacturerId({
+      const internalManufacturerId = await this.getManufacturerId({
         manufacturerId: tempProduct.manufacturerId,
         manufacturerName: tempProduct.manufacturerName,
       });
 
-      const vendorId = await this.getVendorId({
+      const internalVendorId = await this.getVendorId({
         manufacturerId: tempProduct.manufacturerId,
         manufacturerName: tempProduct.manufacturerName,
       });
 
-      if (!manufacturerId || !vendorId) {
+      if (!internalManufacturerId || !internalVendorId) {
         throw new Error(
           `Error while getting vendorId or manufacturerId for manufacturer name: ${tempProduct.manufacturerName} and id: ${tempProduct.manufacturerId}`,
         );
       }
 
       const internalProductId = await this.getProductId({
-        manufacturerId,
-        vendorId,
+        internalManufacturerId,
+        internalVendorId,
         vendorProductId: tempProduct.productId,
       });
 
@@ -313,22 +314,22 @@ export class ProductsService implements OnModuleInit {
       }
 
       return {
-        manufacturerId,
-        vendorId,
+        internalManufacturerId,
+        internalVendorId,
         internalProductId,
         error: null,
       };
     } catch (error) {
       return {
-        manufacturerId: null,
-        vendorId: null,
+        internalManufacturerId: null,
+        internalVendorId: null,
         internalProductId: null,
         error,
       };
     }
   };
 
-  private getVendorId = async ({
+  getVendorId = async ({
     manufacturerId,
     manufacturerName,
   }: {
@@ -355,7 +356,7 @@ export class ProductsService implements OnModuleInit {
     return vendor ? vendor._id.toString() : null;
   };
 
-  private getManufacturerId = async ({
+  getManufacturerId = async ({
     manufacturerId,
     manufacturerName,
   }: {
@@ -381,27 +382,28 @@ export class ProductsService implements OnModuleInit {
     return manufacturer ? manufacturer._id.toString() : null;
   };
 
-  private getProductId = async ({
-    manufacturerId,
-    vendorId,
+  getProductId = async ({
+    internalManufacturerId,
+    internalVendorId,
     vendorProductId,
   }: {
-    manufacturerId: string;
-    vendorId: string;
+    internalManufacturerId: string;
+    internalVendorId: string;
     vendorProductId: string;
   }) => {
     const baseProduct = await this.baseProductModel
       .findOneAndUpdate(
         {
-          manufacturerId,
-          vendorId,
+          manufacturerId: internalManufacturerId,
+          vendorId: internalVendorId,
           vendorProductId,
         },
         {
           $setOnInsert: {
-            manufacturerId,
-            vendorId,
+            manufacturerId: internalManufacturerId,
+            vendorId: internalVendorId,
             vendorProductId,
+            internalProductId: nanoid(),
           },
         },
         { new: true, upsert: true, projection: { internalProductId: 1 } },
@@ -417,13 +419,13 @@ export class ProductsService implements OnModuleInit {
 
   safeGetProductData = async ({
     tempProduct,
-    vendorId,
-    manufacturerId,
+    internalManufacturerId,
+    internalVendorId,
     internalProductId,
   }: {
     tempProduct: TempProduct;
-    vendorId: string;
-    manufacturerId: string;
+    internalManufacturerId: string;
+    internalVendorId: string;
     internalProductId: string;
   }): Promise<
     | { productData: ProductData; error: null }
@@ -437,8 +439,8 @@ export class ProductsService implements OnModuleInit {
       if (!productData) {
         const newProductData = prepareCommonProductData({
           tempProduct,
-          vendorId,
-          manufacturerId,
+          internalManufacturerId,
+          internalVendorId,
           internalProductId,
         });
 
@@ -464,21 +466,21 @@ export class ProductsService implements OnModuleInit {
 
     function prepareCommonProductData({
       tempProduct,
-      vendorId,
-      manufacturerId,
+      internalManufacturerId,
+      internalVendorId,
       internalProductId,
     }: {
       tempProduct: TempProduct;
-      vendorId: string;
-      manufacturerId: string;
+      internalManufacturerId: string;
+      internalVendorId: string;
       internalProductId: string;
     }): ProductDataDto {
       return {
         docId: internalProductId,
         data: {
           name: getProductName(tempProduct),
-          vendorId,
-          manufacturerId,
+          manufacturerId: internalManufacturerId,
+          vendorId: internalVendorId,
           variants: [],
           options: [],
           images: [],

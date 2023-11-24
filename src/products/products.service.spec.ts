@@ -231,6 +231,40 @@ describe('ProductsService', () => {
 
   describe('updateProductsData', () => {
     describe('safeGetUniqueProductData', () => {
+      describe('getProductId', () => {
+        it('should create new baseProduct if productID differs', async () => {
+          const newRow = { ...mockRow, ProductID: 'prod456' };
+          await mockService.safeCreateTempProduct({ row: mockRow });
+          await mockService.safeCreateTempProduct({ row: newRow });
+          const tempProducts = (await tempProductModel.find()) as TempProduct[];
+
+          const internalManufacturerId = (await mockService.getManufacturerId({
+            manufacturerId: tempProducts[0].manufacturerId,
+            manufacturerName: tempProducts[0].manufacturerName,
+          })) as string;
+          const internalVendorId = (await mockService.getVendorId({
+            manufacturerId: tempProducts[0].manufacturerId,
+            manufacturerName: tempProducts[0].manufacturerName,
+          })) as string;
+
+          const internalProductId1 = await mockService.getProductId({
+            internalManufacturerId,
+            internalVendorId,
+            vendorProductId: tempProducts[0].productId,
+          });
+          const internalProductId2 = await mockService.getProductId({
+            internalManufacturerId,
+            internalVendorId,
+            vendorProductId: tempProducts[1].productId,
+          });
+
+          expect(tempProducts[0].productId).not.toEqual(
+            tempProducts[1].productId,
+          );
+          expect(internalProductId1).not.toEqual(internalProductId2);
+        });
+      });
+
       it('should create manufacturer, vendor and baseProduct if not found', async () => {
         await mockService.safeCreateTempProduct({ row: mockRow });
         const tempProduct = await tempProductModel.findOne();
@@ -239,9 +273,35 @@ describe('ProductsService', () => {
           tempProduct: tempProduct!,
         });
         expect(result.error).toBeNull();
-        expect(result.manufacturerId).toBeTruthy();
-        expect(result.vendorId).toBeTruthy();
+        expect(result.internalManufacturerId).toBeTruthy();
+        expect(result.internalVendorId).toBeTruthy();
         expect(result.internalProductId).toBeTruthy();
+      });
+
+      it('should create new baseProduct if productID differs', async () => {
+        const newRow = { ...mockRow, ProductID: 'prod456' };
+        await mockService.safeCreateTempProduct({ row: mockRow });
+        await mockService.safeCreateTempProduct({ row: newRow });
+        const tempProducts = (await tempProductModel.find()) as TempProduct[];
+
+        const result1 = await mockService.safeGetUniqueProductData({
+          tempProduct: tempProducts[0],
+        });
+        const result2 = await mockService.safeGetUniqueProductData({
+          tempProduct: tempProducts[1],
+        });
+
+        expect(result1.error).toBeNull();
+        expect(result2.error).toBeNull();
+        expect(result1.internalManufacturerId).toBeTruthy();
+        expect(result2.internalManufacturerId).toBeTruthy();
+        expect(result1.internalVendorId).toBeTruthy();
+        expect(result2.internalVendorId).toBeTruthy();
+        expect(result1.internalProductId).toBeTruthy();
+        expect(result2.internalProductId).toBeTruthy();
+        expect(result1.internalProductId).not.toEqual(
+          result2.internalProductId,
+        );
       });
     });
 
@@ -254,19 +314,19 @@ describe('ProductsService', () => {
           'findOne',
         );
 
-        const { manufacturerId, vendorId, internalProductId } =
+        const { internalManufacturerId, internalVendorId, internalProductId } =
           (await mockService.safeGetUniqueProductData({
             tempProduct: tempProduct!,
           })) as {
-            vendorId: string;
-            manufacturerId: string;
+            internalManufacturerId: string;
+            internalVendorId: string;
             internalProductId: string;
           };
 
         const result = await mockService.safeGetProductData({
           tempProduct,
-          vendorId,
-          manufacturerId,
+          internalManufacturerId,
+          internalVendorId,
           internalProductId,
         });
 
@@ -275,10 +335,10 @@ describe('ProductsService', () => {
           docId: internalProductId,
         });
         expect(result.productData?.docId).toEqual(internalProductId);
-        expect(result.productData?.data?.vendorId).toEqual(vendorId);
         expect(result.productData?.data?.manufacturerId).toEqual(
-          manufacturerId,
+          internalManufacturerId,
         );
+        expect(result.productData?.data?.vendorId).toEqual(internalVendorId);
       });
     });
 
@@ -288,19 +348,19 @@ describe('ProductsService', () => {
 
         const tempProduct = (await tempProductModel.findOne()) as TempProduct;
 
-        const { manufacturerId, vendorId, internalProductId } =
+        const { internalManufacturerId, internalVendorId, internalProductId } =
           (await mockService.safeGetUniqueProductData({
             tempProduct: tempProduct!,
           })) as {
-            vendorId: string;
-            manufacturerId: string;
+            internalManufacturerId: string;
+            internalVendorId: string;
             internalProductId: string;
           };
 
         const { productData } = await mockService.safeGetProductData({
           tempProduct,
-          vendorId,
-          manufacturerId,
+          internalManufacturerId,
+          internalVendorId,
           internalProductId,
         });
 
