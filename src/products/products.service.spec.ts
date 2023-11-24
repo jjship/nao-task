@@ -343,7 +343,6 @@ describe('ProductsService', () => {
       await mockService.safeCreateTempProduct({ row: mockRow });
 
       const tempProduct = (await tempProductModel.findOne()) as TempProduct;
-      console.log({ tempProduct });
 
       await mockService.updateProductsData();
 
@@ -379,7 +378,6 @@ describe('ProductsService', () => {
       await mockService.safeCreateTempProduct({ row: nextRow });
 
       const tempProduct = (await tempProductModel.findOne()) as TempProduct;
-      console.log({ tempProduct });
 
       await mockService.updateProductsData();
 
