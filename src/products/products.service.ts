@@ -236,7 +236,7 @@ export class ProductsService implements OnModuleInit {
 
     return requiredFields.every(
       (field) => Boolean(row[field]) && isValidNumber(row.UnitPrice),
-    ); // fast-csv will return strings or null so this is fine
+    ); // csv parsing will return strings or null so this is fine
   }
 
   prepareTempProductData({ row }: { row: CsvRow }): CreateTempProductDto {
