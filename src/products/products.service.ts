@@ -42,6 +42,23 @@ export class ProductsService implements OnModuleInit {
   private readonly logger = new Logger(ProductsService.name);
 
   onModuleInit = async () => {
+    function formatMemoryUsage(bytes: number) {
+      return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+    }
+
+    setInterval(() => {
+      const memoryUsage = process.memoryUsage();
+
+      const formattedMemoryUsage = {
+        rss: formatMemoryUsage(memoryUsage.rss), // Resident Set Size: total memory allocated for the process execution
+        heapTotal: formatMemoryUsage(memoryUsage.heapTotal), // total size of the allocated heap
+        heapUsed: formatMemoryUsage(memoryUsage.heapUsed), // actual memory used during the execution
+        external: formatMemoryUsage(memoryUsage.external), // V8 external memory
+        arrayBuffers: formatMemoryUsage(memoryUsage.arrayBuffers), // memory allocated for ArrayBuffers
+      };
+
+      this.logger.debug('Memory Usage:', formattedMemoryUsage);
+    }, 10000); // every 10 seconds
 
     const filePath = path.join(__dirname, '../../../data/test-file.txt');
 
@@ -547,67 +564,67 @@ export class ProductsService implements OnModuleInit {
     }
   };
   prepareNewVariantData({
+    tempVariant,
+  }: {
+    tempVariant: TempProduct['variants'][number];
+  }): Variant {
+    return {
+      id: getRandomString({ length: 12 }),
+      cost: tempVariant.unitPrice,
+      price: calculateMarkup({
+        cost: tempVariant.unitPrice,
+        markup: MARKUP_PERCENTS,
+      }),
+      sku: tempVariant.sku,
+      manufacturerItemId: tempVariant.itemId,
+      packaging: tempVariant.pkg,
+      optionName: prepareOptionName({ tempVariant }),
+      manufacturerItemCode: tempVariant.manufacturerItemCode,
+      description: tempVariant.itemDescription,
+      available: tempVariant.availability ? true : false,
+      images: getVariantImageData({ tempVariant }),
+      optionsPath: '', // TODO
+      optionItemsPath: '', // TODO
+    };
+
+    function prepareOptionName({
       tempVariant,
     }: {
       tempVariant: TempProduct['variants'][number];
-    }): Variant {
-      return {
-        id: getRandomString({ length: 12 }),
-        cost: tempVariant.unitPrice,
-        price: calculateMarkup({
-          cost: tempVariant.unitPrice,
-          markup: MARKUP_PERCENTS,
-        }),
-        sku: tempVariant.sku,
-        manufacturerItemId: tempVariant.itemId,
-        packaging: tempVariant.pkg,
-        optionName: prepareOptionName({ tempVariant }),
-        manufacturerItemCode: tempVariant.manufacturerItemCode,
-        description: tempVariant.itemDescription,
-        available: tempVariant.availability ? true : false,
-        images: getVariantImageData({ tempVariant }),
-        optionsPath: '', // TODO
-        optionItemsPath: '', // TODO
-      };
-
-      function prepareOptionName({
-        tempVariant,
-      }: {
-        tempVariant: TempProduct['variants'][number];
-      }) {
-        return `${tempVariant.pkg}, ${tempVariant.itemDescription}`;
-      }
-
-      function getVariantImageData({
-        tempVariant,
-      }: {
-        tempVariant: TempProduct['variants'][number];
-      }) {
-        return tempVariant.itemImageUrl
-          ? [
-              {
-                cdnLink: tempVariant.itemImageUrl,
-                fileName: tempVariant.imageFileName ?? '',
-              },
-            ]
-          : [];
-      }
+    }) {
+      return `${tempVariant.pkg}, ${tempVariant.itemDescription}`;
     }
 
-  getVariantDataToUpdate({
-      newVariant,
-      variantInDb,
+    function getVariantImageData({
+      tempVariant,
     }: {
-      newVariant: Variant;
-      variantInDb: Variant | undefined;
-    }): VariantDto {
+      tempVariant: TempProduct['variants'][number];
+    }) {
+      return tempVariant.itemImageUrl
+        ? [
+            {
+              cdnLink: tempVariant.itemImageUrl,
+              fileName: tempVariant.imageFileName ?? '',
+            },
+          ]
+        : [];
+    }
+  }
+
+  getVariantDataToUpdate({
+    newVariant,
+    variantInDb,
+  }: {
+    newVariant: Variant;
+    variantInDb: Variant | undefined;
+  }): VariantDto {
     if (!variantInDb) {
       return new VariantDto(newVariant);
     }
     type imageKey = keyof Variant['images'][number];
-      const variantDataToUpdate = new VariantDto(); // Initialize an empty VariantDto
+    const variantDataToUpdate = new VariantDto(); // Initialize an empty VariantDto
     const variantDataInDb = new VariantDto(variantInDb); // Initialize a VariantDto with data from the database
-      const keysToCheck = Object.keys(newVariant) as Array<keyof Variant>;
+    const keysToCheck = Object.keys(newVariant) as Array<keyof Variant>;
 
     for (const key of keysToCheck) {
       if (key === 'id') continue;
@@ -636,13 +653,13 @@ export class ProductsService implements OnModuleInit {
         continue;
       }
 
-        if (!variantInDb || newVariant[key] !== variantInDb[key]) {
-          (variantDataToUpdate as any)[key] = newVariant[key];
-        }
+      if (!variantInDb || newVariant[key] !== variantInDb[key]) {
+        (variantDataToUpdate as any)[key] = newVariant[key];
+      }
     }
 
-      return variantDataToUpdate;
-    }
+    return variantDataToUpdate;
+  }
 
   private handleError = (error: Error) => {
     this.logger.error(error);
