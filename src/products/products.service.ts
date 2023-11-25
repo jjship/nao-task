@@ -42,7 +42,12 @@ export class ProductsService implements OnModuleInit {
   private readonly logger = new Logger(ProductsService.name);
 
   onModuleInit = async () => {
-    const filePath = path.join(__dirname, '../../../data/short-test.txt');
+
+    const filePath = path.join(__dirname, '../../../data/test-file.txt');
+
+    this.logger.log(
+      `Initializing products data import from CSV at ${filePath}`,
+    );
 
     try {
       this.logger.log('Deleting previous temp products');
@@ -51,9 +56,9 @@ export class ProductsService implements OnModuleInit {
     } catch (error) {
       this.handleError(error);
     }
-
+    this.logger.log('Processing CSV file');
     await this.processCsvFile({ filePath });
-
+    this.logger.log('Updating products data');
     await this.updateProductsData();
 
     return;
@@ -69,23 +74,21 @@ export class ProductsService implements OnModuleInit {
         chunk: async (result, parser) => {
           parser.pause();
 
-          this.logger.debug('Processing chunk', result.data.length);
-
           await this.processChunk(result.data);
 
-          this.logger.log({
-            saved: this.csvInfo.tempProductsCounter,
-            invalidRows: this.csvInfo.invalidRowsCount,
-            // memory: this.memory.checkHeap('memory_heap', 500 * 1024 * 1024),
-          });
           parser.resume();
         },
         complete: () => {
-          this.logger.log('CSV file successfully processed', this.csvInfo);
+          this.logger.log('CSV file successfully processed', {
+            validRowsCount: this.csvInfo.validRowsCount,
+            invalidRowsCount: this.csvInfo.invalidRowsCount,
+            tempProductsCounter: this.csvInfo.tempProductsCounter,
+            errors: this.csvInfo.errors,
+          });
           resolve();
         },
         error: (error) => {
-          console.error('Error processing CSV file:', error);
+          this.logger.error('Error processing CSV file:', error);
           reject(error);
         },
       });
@@ -106,7 +109,6 @@ export class ProductsService implements OnModuleInit {
   }
 
   updateProductsData = async () => {
-    this.logger.log('Updating products data');
     const cursor = this.tempProductModel.find().cursor();
 
     for await (const tempProduct of cursor) {
@@ -153,10 +155,8 @@ export class ProductsService implements OnModuleInit {
     cursor.on('error', (error) => {
       this.handleError(error);
     });
-    cursor.on('end', () => {
-      this.logger.log('Updating products data');
-    });
-    this.logger.debug('Products data updated', this.csvInfo);
+
+    this.logger.log('Products data updated', this.csvInfo);
   };
 
   private csvInfo: {
@@ -167,6 +167,7 @@ export class ProductsService implements OnModuleInit {
     baseProductsCount: number;
     newProductsCount: number;
     newVariantsCount: number;
+    errors: Error[];
   } = {
     validRowsCount: 0,
     invalidRowsCount: 0,
@@ -175,6 +176,7 @@ export class ProductsService implements OnModuleInit {
     baseProductsCount: 0,
     newProductsCount: 0,
     newVariantsCount: 0,
+    errors: [],
   };
 
   safeCreateTempProduct = async ({
@@ -518,12 +520,12 @@ export class ProductsService implements OnModuleInit {
     { status: 'ok'; error: null } | { status: 'error'; error: Error }
   > => {
     try {
-      const newVariant = prepareNewVariantData({ tempVariant });
+      const newVariant = this.prepareNewVariantData({ tempVariant });
       const variantInDb = productData.data.variants
         ? productData.data.variants.find((v) => v.sku === newVariant.sku)
         : undefined;
 
-      const variantDataToUpdate = getVariantDataToUpdate({
+      const variantDataToUpdate = this.getVariantDataToUpdate({
         newVariant,
         variantInDb,
       });
@@ -543,8 +545,8 @@ export class ProductsService implements OnModuleInit {
     } catch (error) {
       return { status: 'error', error };
     }
-
-    function prepareNewVariantData({
+  };
+  prepareNewVariantData({
       tempVariant,
     }: {
       tempVariant: TempProduct['variants'][number];
@@ -592,27 +594,58 @@ export class ProductsService implements OnModuleInit {
       }
     }
 
-    function getVariantDataToUpdate({
+  getVariantDataToUpdate({
       newVariant,
       variantInDb,
     }: {
       newVariant: Variant;
       variantInDb: Variant | undefined;
     }): VariantDto {
+    if (!variantInDb) {
+      return new VariantDto(newVariant);
+    }
+    type imageKey = keyof Variant['images'][number];
       const variantDataToUpdate = new VariantDto(); // Initialize an empty VariantDto
+    const variantDataInDb = new VariantDto(variantInDb); // Initialize a VariantDto with data from the database
       const keysToCheck = Object.keys(newVariant) as Array<keyof Variant>;
 
-      keysToCheck.forEach((key) => {
+    for (const key of keysToCheck) {
+      if (key === 'id') continue;
+      if (key === 'images') {
+        const newImages = newVariant.images;
+        const oldImages = variantInDb.images;
+        if (!newImages.length) continue;
+
+        if (!oldImages.length) {
+          variantDataToUpdate[key] = newImages;
+          continue;
+        }
+
+        for (const newImage of newImages) {
+          if (
+            oldImages.some((oldImage) => {
+              Object.keys(newImage).some((imageKey: imageKey) => {
+                return oldImage[imageKey] !== newImage[imageKey];
+              });
+            })
+          ) {
+            variantDataToUpdate.images = [...newImages];
+            break;
+          }
+        }
+        continue;
+      }
+
         if (!variantInDb || newVariant[key] !== variantInDb[key]) {
           (variantDataToUpdate as any)[key] = newVariant[key];
         }
-      });
+    }
 
       return variantDataToUpdate;
     }
-  };
 
   private handleError = (error: Error) => {
     this.logger.error(error);
+    this.csvInfo.errors.push(error);
   };
 }

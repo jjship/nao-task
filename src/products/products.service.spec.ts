@@ -402,7 +402,7 @@ describe('ProductsService', () => {
     it('should add variant to productData', async () => {
       await mockService.safeCreateTempProduct({ row: mockRow });
 
-      const tempProduct = (await tempProductModel.findOne()) as TempProduct;
+      (await tempProductModel.findOne()) as TempProduct;
 
       await mockService.updateProductsData();
 
@@ -437,7 +437,7 @@ describe('ProductsService', () => {
       await mockService.safeCreateTempProduct({ row: mockRow });
       await mockService.safeCreateTempProduct({ row: nextRow });
 
-      const tempProduct = (await tempProductModel.findOne()) as TempProduct;
+      // (await tempProductModel.findOne()) as TempProduct;
 
       await mockService.updateProductsData();
 
@@ -449,6 +449,31 @@ describe('ProductsService', () => {
 
       expect(returnedVariant?.sku).toEqual('item123prod789BX');
       expect(nextReturnedVariant?.sku).toEqual('item456prod789BX');
+    });
+
+    describe('safeUpdateVariant', () => {
+      it('should not add new variant to productData if variants are present, and no data differs', async () => {
+        await mockService.safeCreateTempProduct({ row: mockRow });
+
+        await mockService.updateProductsData();
+
+        const productDataInDb = await mockService.productDataModel.findOne();
+
+        const variantInDb = productDataInDb?.data.variants[0];
+
+        const tempProduct = (await tempProductModel.findOne()) as TempProduct;
+
+        const newVariant = mockService.prepareNewVariantData({
+          tempVariant: tempProduct.variants[0],
+        });
+
+        const variantDataToUpdate = mockService.getVariantDataToUpdate({
+          newVariant,
+          variantInDb,
+        });
+
+        expect(Object.keys(variantDataToUpdate).length).toEqual(0);
+      });
     });
   });
 
